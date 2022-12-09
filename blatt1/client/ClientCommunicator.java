@@ -58,6 +58,14 @@ public class ClientCommunicator {
 		public void sendLocationRequest(InetSocketAddress receiver, LocationRequest locationRequest){
 			endpoint.send(receiver, locationRequest);
 		}
+
+		public void sendResolutionRequest(NameResolutionRequest nameResolutionRequest){
+			endpoint.send(broker, nameResolutionRequest);
+		}
+
+		public void sendCurrentFishLocation(InetSocketAddress homeLocation, String fishID){
+			endpoint.send(homeLocation, new LocationUpdate(fishID));
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -95,11 +103,19 @@ public class ClientCommunicator {
 				}
 
 				if (msg.getPayload() instanceof LocationRequest){
-					tankModel.locateFishGlobally(((LocationRequest) msg.getPayload()).getFishID());
+					tankModel.locateFishLocally(((LocationRequest) msg.getPayload()).getFishID());
 				}
 
 				if (msg.getPayload() instanceof NameResolutionResponse){
+					InetSocketAddress homeLocation = ((NameResolutionResponse) msg.getPayload()).getHomeLocation();
+					String fishID = ((NameResolutionResponse) msg.getPayload()).getRequestID();
+					tankModel.handleResponse(homeLocation, fishID);
+				}
 
+				if (msg.getPayload() instanceof LocationUpdate){
+					String fishID = ((LocationUpdate) msg.getPayload()).getFishID();
+					InetSocketAddress currentLocation = msg.getSender();
+					tankModel.updateCurrentLocation(fishID, currentLocation);
 				}
 
 			}

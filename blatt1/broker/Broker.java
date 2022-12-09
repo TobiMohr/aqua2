@@ -26,7 +26,6 @@ public class Broker {
     ClientCollection clientCollection = new ClientCollection();
     ExecutorService executorService = Executors.newFixedThreadPool(NUMTHREADS);
     ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
-    Map<String, InetSocketAddress>nameSpace = new HashMap();
 
 
     private class BrokerTask {
@@ -57,7 +56,11 @@ public class Broker {
             }
 
             if (message.getPayload() instanceof NameResolutionRequest){
-
+                String TankID = ((NameResolutionRequest) message.getPayload())
+                        .getTankID();
+                String RequestID = ((NameResolutionRequest) message.getPayload()).getRequestID();
+                InetSocketAddress sender = message.getSender();
+                sendResponse(TankID, RequestID, sender);
             }
         }
     }
@@ -88,7 +91,6 @@ public class Broker {
         String id = "tank"+(count++);
         clientCollection.add(id, msg.getSender());
         Neighbor neighbor = new Neighbor(id);
-        nameSpace.put(id, msg.getSender());
 
         InetSocketAddress newClientAddress = (InetSocketAddress) clientCollection.getClient(clientCollection.indexOf(id));
 
@@ -165,5 +167,10 @@ public class Broker {
             initialLeftNeighborSocket = (InetSocketAddress) clientCollection.getLeftNeighorOf(indexInitialLeftNeighborSocket);
             return initialLeftNeighborSocket;
         }
+    }
+
+    private void sendResponse(String TankID, String RequestID, InetSocketAddress sender){
+        InetSocketAddress homeClient = (InetSocketAddress) clientCollection.getClient(clientCollection.indexOf(TankID));
+        endpoint.send(sender, new NameResolutionResponse(homeClient, RequestID));
     }
 }

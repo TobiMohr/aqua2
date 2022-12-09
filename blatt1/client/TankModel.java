@@ -11,10 +11,7 @@ import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishLocation;
 import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.RecordsState;
-import aqua.blatt1.common.msgtypes.Collector;
-import aqua.blatt1.common.msgtypes.LocationRequest;
-import aqua.blatt1.common.msgtypes.SnapshotMarker;
-import aqua.blatt1.common.msgtypes.Token;
+import aqua.blatt1.common.msgtypes.*;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -39,7 +36,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected int counter = 0;
 	Timer timer = new Timer();
 	ExecutorService executorService = Executors.newFixedThreadPool(NUMTHREADS);
-	Map<String, FishLocation> fishLocationHashMap = new HashMap<>();
+	Map<String, InetSocketAddress> homeAgent = new HashMap<>();
 
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
@@ -60,7 +57,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
 			fishies.add(fish);
-			fishLocationHashMap.put(fish.getId(), FishLocation.HERE);
+			homeAgent.put(fish.getId(), null);
 		}
 	}
 
@@ -72,7 +69,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 		fish.setToStart();
 		fishies.add(fish);
-		fishLocationHashMap.put(fish.getId(), FishLocation.HERE);
+		updateFishLocation(fish);
 	}
 
 	public String getId() {
@@ -97,11 +94,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 				hasToken(fish);
 
 			if (fish.disappears()){
-				if (fish.getDirection() == Direction.LEFT){
-					fishLocationHashMap.put(fish.getId(), FishLocation.LEFT);
-				} else if (fish.getDirection() == Direction.RIGHT){
-					fishLocationHashMap.put(fish.getId(), FishLocation.RIGHT);
-				}
 				it.remove();
 			}
 
@@ -235,24 +227,38 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	public void locateFishGlobally(String fishID) {
-		FishLocation fishLocation = fishLocationHashMap.get(fishID);
-		if (fishLocation == FishLocation.HERE) {
+
+		if (homeAgent.get(fishID) == null) {
 			locateFishLocally(fishID);
 		} else {
-			if (fishLocation == FishLocation.LEFT) {
-				forwarder.sendLocationRequest(leftNeighbor, new LocationRequest(fishID));
-			} else {
-				forwarder.sendLocationRequest(rightNeighbor, new LocationRequest(fishID));
-			}
+			InetSocketAddress currentFishLocation = homeAgent.get(fishID);
+			forwarder.sendLocationRequest(currentFishLocation, new LocationRequest(fishID));
 		}
 	}
 
-	private void locateFishLocally(String fishID) {
+	public void locateFishLocally(String fishID) {
 		for(FishModel fish : this.fishies) {
 			if (fish.getId().equals(fishID)) {
 				fish.toggle();
 			}
 		}
+	}
+
+	public void updateFishLocation(FishModel fish){
+		String fishID = fish.getId();
+		if (homeAgent.containsKey(fishID)){
+			homeAgent.put(fishID, null);
+		} else {
+			forwarder.sendResolutionRequest(new NameResolutionRequest(fish.getTankId(), fishID));
+		}
+	}
+
+	public void handleResponse(InetSocketAddress homeLocation, String fishID){
+		forwarder.sendCurrentFishLocation(homeLocation, fishID);
+	}
+
+	public void updateCurrentLocation(String fishID, InetSocketAddress currentLocation){
+		homeAgent.put(fishID, currentLocation);
 	}
 
 }

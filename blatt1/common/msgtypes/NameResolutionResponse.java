@@ -7,7 +7,7 @@ public class NameResolutionResponse implements Serializable {
     private final InetSocketAddress homeLocation;
     private final String requestID;
 
-    public NameResolutionResponse (String requestID, InetSocketAddress homeLocation){
+    public NameResolutionResponse (InetSocketAddress homeLocation, String requestID){
         this.requestID = requestID;
         this.homeLocation = homeLocation;
     }
