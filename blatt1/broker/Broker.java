@@ -16,6 +16,9 @@ import java.util.concurrent.ExecutorService;
 import java.net.InetSocketAddress;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class Broker {
 
@@ -26,6 +29,8 @@ public class Broker {
     ClientCollection clientCollection = new ClientCollection();
     ExecutorService executorService = Executors.newFixedThreadPool(NUMTHREADS);
     ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    int leaseDauer = 10;
+    Timer timer = new Timer();
 
 
     private class BrokerTask {
@@ -71,6 +76,26 @@ public class Broker {
     }
 
     public void broker() {
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("test");
+                Date timestamp = new Date();
+                System.out.println(clientCollection.size());
+                if (clientCollection.size() > 0){
+                    for(int i = 0; i < clientCollection.size(); i++){
+                        Date date = clientCollection.getTimestamp(i);
+                        System.out.println(date);
+                        long leaseTime = timestamp.getTime() - date.getTime();
+                        System.out.println(leaseTime);
+                        if (leaseTime > 10 * 1000){
+                            endpoint.send((InetSocketAddress) clientCollection.getClient(i), new LeasingRunOut());
+                        }
+                    }
+                }
+            }
+        }, 0, 3 *  1000);
+
         executorService.execute(new Runnable() {
             @Override
             public void run() {
@@ -88,35 +113,43 @@ public class Broker {
     }
 
     private void register(Message msg) {
-        String id = "tank"+(count++);
-        clientCollection.add(id, msg.getSender());
-        Neighbor neighbor = new Neighbor(id);
+        Date timestamp = new Date();
+        if (clientCollection.indexOf(msg.getSender()) == -1) {
+            String id = "tank" + (count++);
+            clientCollection.add(id, msg.getSender(), timestamp);
+            Neighbor neighbor = new Neighbor(id);
 
-        InetSocketAddress newClientAddress = (InetSocketAddress) clientCollection.getClient(clientCollection.indexOf(id));
+            InetSocketAddress newClientAddress = (InetSocketAddress) clientCollection.getClient(clientCollection.indexOf(id));
 
-        if (clientCollection.size() == 1) {
-            endpoint.send(msg.getSender(), new NeighborUpdate(newClientAddress, newClientAddress));
-            endpoint.send(msg.getSender(), new Token());
+            if (clientCollection.size() == 1) {
+                endpoint.send(msg.getSender(), new NeighborUpdate(newClientAddress, newClientAddress));
+                endpoint.send(msg.getSender(), new Token());
+            } else {
+
+                endpoint.send(neighbor.getRightNeighborSocker(), new NeighborUpdate(neighbor.getInitialRightNeighborSocket(), newClientAddress));
+                endpoint.send(neighbor.getLeftNeighborSocket(), new NeighborUpdate(newClientAddress, neighbor.getInitialLeftNeighborSocket()));
+                endpoint.send(newClientAddress, new NeighborUpdate(neighbor.getRightNeighborSocker(), neighbor.getLeftNeighborSocket()));
+            }
+
+            endpoint.send(msg.getSender(), new RegisterResponse(id, leaseDauer));
         } else {
-            endpoint.send(neighbor.getRightNeighborSocker(), new NeighborUpdate(neighbor.getInitialRightNeighborSocket(), newClientAddress));
-            endpoint.send(neighbor.getLeftNeighborSocket(), new NeighborUpdate(newClientAddress, neighbor.getInitialLeftNeighborSocket()));
-            endpoint.send(newClientAddress, new NeighborUpdate(neighbor.getRightNeighborSocker(), neighbor.getLeftNeighborSocket()));
+            System.out.println("prüfe ob bereits registriert");
+            int index = clientCollection.indexOf(msg.getSender());
+            clientCollection.setTimestamp(index, timestamp);
+            endpoint.send(msg.getSender(), new RegisterResponse(clientCollection.getId(index), leaseDauer));
         }
-        endpoint.send(msg.getSender(), new RegisterResponse(id));
     }
 
     private void deregister(Message msg) {
         String removeID = ((DeregisterRequest) msg.getPayload()).getId();
         Neighbor neighbor = new Neighbor(removeID);
 
-        if (clientCollection.size() == 2){
+        if (clientCollection.size() == 2) {
             endpoint.send(neighbor.getRightNeighborSocker(), new NeighborUpdate(neighbor.getLeftNeighborSocket(),
                     neighbor.getLeftNeighborSocket()));
         } else {
-            endpoint.send(neighbor.getRightNeighborSocker(), new NeighborUpdate(neighbor.getInitialRightNeighborSocket(),
-                    neighbor.getLeftNeighborSocket()));
-            endpoint.send(neighbor.getLeftNeighborSocket(), new NeighborUpdate(neighbor.getRightNeighborSocker(),
-                    neighbor.getInitialLeftNeighborSocket()));
+            endpoint.send(neighbor.getRightNeighborSocker(), new NeighborUpdate(neighbor.getInitialRightNeighborSocket(), neighbor.getLeftNeighborSocket()));
+            endpoint.send(neighbor.getLeftNeighborSocket(), new NeighborUpdate(neighbor.getRightNeighborSocker(), neighbor.getInitialLeftNeighborSocket()));
         }
         clientCollection.remove(clientCollection.indexOf(removeID));
     }

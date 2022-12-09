@@ -2,6 +2,7 @@ package aqua.blatt1.broker;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Date;
 
 /*
  * This class is not thread-safe and hence must be used in a thread-safe way, e.g. thread confined or 
@@ -12,10 +13,22 @@ public class ClientCollection<T> {
 	private class Client {
 		final String id;
 		final T client;
+		private Date timestamp;
 
-		Client(String id, T client) {
+		Client(String id, T client, Date timestamp) {
 			this.id = id;
 			this.client = client;
+			this.timestamp = timestamp;
+		}
+
+		public Date getTimestamp(){
+			return timestamp;
+		}
+		public void setTimestamp(Date timestamp){
+			this.timestamp = timestamp;
+		}
+		public String getId() {
+			return  id;
 		}
 	}
 
@@ -25,8 +38,8 @@ public class ClientCollection<T> {
 		clients = new ArrayList<Client>();
 	}
 
-	public ClientCollection<T> add(String id, T client) {
-		clients.add(new Client(id, client));
+	public ClientCollection<T> add(String id, T client, Date timestamp) {
+		clients.add(new Client(id, client, timestamp));
 		return this;
 	}
 
@@ -63,6 +76,18 @@ public class ClientCollection<T> {
 
 	public T getRightNeighorOf(int index) {
 		return index < clients.size() - 1 ? clients.get(index + 1).client : clients.get(0).client;
+	}
+
+	public void setTimestamp(int index, Date timestamp){
+		clients.get(index).setTimestamp(timestamp);
+	}
+
+	public Date getTimestamp(int index){
+		return clients.get(index).getTimestamp();
+	}
+
+	public String getId(int index){
+		return clients.get(index).getId();
 	}
 
 }
